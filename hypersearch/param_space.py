@@ -86,26 +86,44 @@ class ParamEvaluator:
         self.logs = defaultdict(list)
 
 
+class ExperimentScheduler:
+
+    def __init__(self, experiment_object, number_of_generations=1, number_of_experiments=1, number_of_variation=0,
+                 maximize=False, max_number_of_top=None):
+        self.exp_obj = experiment_object
+        self.ps = ParamSpace(number_of_variation=number_of_variation)
+        self.peval = ParamEvaluator()
+        self.n_generations = number_of_generations
+        self.n_experiments = number_of_experiments
+        self._maximize = maximize
+        self._max_k = max_number_of_top or self.n_generations
+
+    def add_experiment_param(self, p_name, p_val, **kwargs):
+        self.ps.add_param(p_name, p_val, **kwargs)
+
+    def run(self):
+        for i_gen in range(self.n_generations):
+            for i_exp in range(self.n_experiments):
+                sample = self.ps.sample()
+                print(f"({i_gen}:{i_exp}", sample)
+                res = self.exp_obj(**sample)
+                self.peval.log_result(sample, res)
+            k = min(self.n_generations - i_gen, self._max_k)
+            top_k = self.peval.find_top_k(k, maximize=self._maximize)
+            print(top_k)
+            print("############")
+            self.ps.update_param_space(top_k)
+            self.peval.reset()
+
 if __name__ == "__main__":
 
-    ps = ParamSpace(number_of_variation=3)
-    ps.add_param("learning_rate", [0.1, 0.2, 0.001])
-    ps.add_param("momentum", partial(np.random.normal, 0, 1), variation_ratio=0.05)
-    ps.add_param("batch_size", [32, 64, 128, 256, 526])
-    sample = ps.sample()
-    print(sample)
-    print("############")
+    def test_obj(learning_rate=0, momentum=1, batch_size=12):
+        return learning_rate + abs(momentum * batch_size)
 
-    peval = ParamEvaluator()
+    e_sched = ExperimentScheduler(test_obj, number_of_generations=30, number_of_experiments=30, number_of_variation=10,
+                                  maximize=False, max_number_of_top=10)
+    e_sched.add_experiment_param("learning_rate", [0.1, 0.2, 0.001])
+    e_sched.add_experiment_param("momentum", partial(np.random.normal, 0, 1), variation_ratio=1)
+    e_sched.add_experiment_param("batch_size", [32, 64, 128, 256, 526])
 
-    for n in reversed(range(5)):
-        print(ps.params)
-        for i in range(10):
-            sample = ps.sample()
-            print(i, sample)
-            peval.log_result(sample, i)
-        top_k = peval.find_top_k(int(np.ceil((n+1)/2)), maximize=False)
-        print(top_k)
-        print("############")
-        ps.update_param_space(top_k)
-        peval.reset()
+    e_sched.run()
