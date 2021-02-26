@@ -117,7 +117,8 @@ class ExperimentScheduler:
 
             for i, p in enumerate(output):
                 res, sample = p.get()
-                self.peval.log_result(sample, res)
+                if res is not None:
+                    self.peval.log_result(sample, res)
 
             # for i_exp in range(self.n_experiments):
             #     sample = self.ps.sample()
