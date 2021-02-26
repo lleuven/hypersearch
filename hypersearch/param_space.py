@@ -17,6 +17,8 @@ class ParamSpace:
         self._param_variation = {}
         self._param_type = {}
         self._number_of_combinations = max(number_of_combinations, 1)
+        self._sample_history = []
+        self._max_sample_try = 10
 
     def add_param(self, p_name, p_values, variation_ratio=0., parameter_type=None):
         if p_name in self.params.keys():
@@ -30,7 +32,7 @@ class ParamSpace:
         if parameter_type is not None:
             self._param_type[p_name] = parameter_type
 
-    def sample(self):
+    def sample(self, iteration=0):
         p_selected = {}
         for p_name in self.params.keys():
             p = self.params[p_name]
@@ -39,11 +41,18 @@ class ParamSpace:
             else:
                 sel = np.random.choice(p)
             p_selected[p_name] = sel
-        return p_selected
+        if p_selected in self._sample_history:
+            if iteration == self._max_sample_try:
+                return None
+            return self.sample(iteration+1)
+        else:
+            self._sample_history.append(p_selected)
+            return p_selected
 
     def update_param_space(self, update_opts):
         for p_name, p_vals in update_opts.items():
             self._update_param(p_name, p_vals)
+        self._sample_history = []
 
     def _update_param(self, p_name, values):
         variation_ratio = self._param_variation.get(p_name, None)
@@ -134,8 +143,10 @@ class ExperimentScheduler:
             self.peval.reset()
 
 def f_proc(sample, i_gen, i_exp, exp_obj):
-    print(f"({i_gen}:{i_exp}", sample)
-    res = exp_obj(**sample)
+    res = None
+    if sample is not None:
+        print(f"({i_gen}:{i_exp}", sample)
+        res = exp_obj(**sample)
     return res, sample
 
 if __name__ == "__main__":
@@ -143,7 +154,7 @@ if __name__ == "__main__":
     def test_obj(learning_rate=0, momentum=1, batch_size=12):
         return learning_rate + abs(momentum * batch_size)
 
-    e_sched = ExperimentScheduler(test_obj, number_of_generations=20, number_of_experiments=30, number_of_variation=10,
+    e_sched = ExperimentScheduler(test_obj, number_of_generations=20, number_of_experiments=30, number_of_variation=2,
                                   maximize=False, max_number_of_top=10)
     e_sched.add_experiment_param("learning_rate", [0.1, 0.2, 0.001])
     e_sched.add_experiment_param("momentum", partial(np.random.normal, 0, 1), variation_ratio=1)
