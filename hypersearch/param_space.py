@@ -6,6 +6,8 @@ from typing import Callable
 from functools import partial
 from operator import itemgetter
 from collections import defaultdict
+import multiprocessing
+import psutil
 
 
 class ParamSpace:
@@ -102,11 +104,21 @@ class ExperimentScheduler:
 
     def run(self):
         for i_gen in range(self.n_generations):
-            for i_exp in range(self.n_experiments):
-                sample = self.ps.sample()
-                print(f"({i_gen}:{i_exp}", sample)
-                res = self.exp_obj(**sample)
+            pool = multiprocessing.Pool(min([psutil.cpu_count(logical=False), 16]))  # use only physical cpus
+            output = [
+                pool.apply_async(f_proc, args=(self.ps.sample(), i_gen, i_exp, self.exp_obj))
+                for i_exp in range(self.n_experiments)]
+
+            for i, p in enumerate(output):
+                res, sample = p.get()
                 self.peval.log_result(sample, res)
+
+            # for i_exp in range(self.n_experiments):
+            #     sample = self.ps.sample()
+            #     print(f"({i_gen}:{i_exp}", sample)
+            #     res = self.exp_obj(**sample)
+            #     self.peval.log_result(sample, res)
+
             k = min(self.n_generations - i_gen, self._max_k)
             top_k = self.peval.find_top_k(k, maximize=self._maximize)
             print(top_k)
@@ -114,6 +126,10 @@ class ExperimentScheduler:
             self.ps.update_param_space(top_k)
             self.peval.reset()
 
+def f_proc(sample, i_gen, i_exp, exp_obj):
+    print(f"({i_gen}:{i_exp}", sample)
+    res = exp_obj(**sample)
+    return res, sample
 
 if __name__ == "__main__":
 
