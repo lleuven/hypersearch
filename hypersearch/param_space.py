@@ -12,12 +12,13 @@ import psutil
 
 class ParamSpace:
 
-    def __init__(self, number_of_variation=5):
+    def __init__(self, number_of_combinations=5):
         self.params = {}
         self._param_variation = {}
-        self._number_of_variations = max(number_of_variation, 1)
+        self._param_type = {}
+        self._number_of_combinations = max(number_of_combinations, 1)
 
-    def add_param(self, p_name, p_values, variation_ratio=0.):
+    def add_param(self, p_name, p_values, variation_ratio=0., parameter_type=None):
         if p_name in self.params.keys():
             raise KeyError(f"given key '{p_name}' is already registered in the parameter space.")
         if isinstance(p_values, Callable):
@@ -26,6 +27,8 @@ class ParamSpace:
             self.params[p_name] = to_list(p_values)
         if variation_ratio > 0:
             self._param_variation[p_name] = variation_ratio
+        if parameter_type is not None:
+            self._param_type[p_name] = parameter_type
 
     def sample(self):
         p_selected = {}
@@ -44,15 +47,18 @@ class ParamSpace:
 
     def _update_param(self, p_name, values):
         variation_ratio = self._param_variation.get(p_name, None)
+        param_type = self._param_type.get(p_name, None)
         if variation_ratio is None:
             self.params[p_name] = values
         else:
             new_param_values = []
             for val in values:
                 new_param_values.append(val)
-                for rand_num in range(self._number_of_variations - 1):
+                for rand_num in range(self._number_of_combinations - 1):
                     variation = val * (2 * variation_ratio * np.random.random() - variation_ratio)
-                    new_param_values.append(val + variation)
+                    new_val = val + variation
+                    new_val = new_val if param_type is None else param_type(new_val)
+                    new_param_values.append(new_val)
             self.params[p_name] = list(set(new_param_values))
 
 
@@ -92,7 +98,7 @@ class ExperimentScheduler:
     def __init__(self, experiment_object, number_of_generations=1, number_of_experiments=1, number_of_variation=0,
                  maximize=False, max_number_of_top=None):
         self.exp_obj = experiment_object
-        self.ps = ParamSpace(number_of_variation=number_of_variation)
+        self.ps = ParamSpace(number_of_combinations=number_of_variation)
         self.peval = ParamEvaluator()
         self.n_generations = number_of_generations
         self.n_experiments = number_of_experiments
@@ -140,6 +146,6 @@ if __name__ == "__main__":
                                   maximize=False, max_number_of_top=10)
     e_sched.add_experiment_param("learning_rate", [0.1, 0.2, 0.001])
     e_sched.add_experiment_param("momentum", partial(np.random.normal, 0, 1), variation_ratio=1)
-    e_sched.add_experiment_param("batch_size", [32, 64, 128, 256, 526])
+    e_sched.add_experiment_param("batch_size", [32, 64, 128, 256, 526], variation_ratio=0.5, parameter_type=int)
 
     e_sched.run()
