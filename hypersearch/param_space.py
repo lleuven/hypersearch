@@ -20,10 +20,10 @@ class ParamSpace:
             raise KeyError(f"given key '{p_name}' is already registered in the parameter space.")
         if isinstance(p_values, Callable):
             self.params[p_name] = p_values
-            if variation_ratio > 0:
-                self._param_variation[p_name] = variation_ratio
         else:
             self.params[p_name] = to_list(p_values)
+        if variation_ratio > 0:
+            self._param_variation[p_name] = variation_ratio
 
     def sample(self):
         p_selected = {}
