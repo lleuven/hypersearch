@@ -32,8 +32,7 @@ class ParamSpace:
             if isinstance(p, Callable):
                 sel = p()
             else:
-                pos = np.random.randint(0, len(p))
-                sel = p[pos]
+                sel = np.random.choice(p)
             p_selected[p_name] = sel
         return p_selected
 
@@ -50,8 +49,8 @@ class ParamSpace:
             for val in values:
                 new_param_values.append(val)
                 for rand_num in range(self._number_of_variations - 1):
-                    variation = np.random.normal(0, 1)
-                    new_param_values.append(val + val * variation * variation_ratio)
+                    variation = val * (2 * variation_ratio * np.random.random() - variation_ratio)
+                    new_param_values.append(val + variation)
             self.params[p_name] = list(set(new_param_values))
 
 
@@ -115,12 +114,13 @@ class ExperimentScheduler:
             self.ps.update_param_space(top_k)
             self.peval.reset()
 
+
 if __name__ == "__main__":
 
     def test_obj(learning_rate=0, momentum=1, batch_size=12):
         return learning_rate + abs(momentum * batch_size)
 
-    e_sched = ExperimentScheduler(test_obj, number_of_generations=30, number_of_experiments=30, number_of_variation=10,
+    e_sched = ExperimentScheduler(test_obj, number_of_generations=20, number_of_experiments=30, number_of_variation=10,
                                   maximize=False, max_number_of_top=10)
     e_sched.add_experiment_param("learning_rate", [0.1, 0.2, 0.001])
     e_sched.add_experiment_param("momentum", partial(np.random.normal, 0, 1), variation_ratio=1)
