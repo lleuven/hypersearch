@@ -8,6 +8,7 @@ from operator import itemgetter
 from collections import defaultdict
 import multiprocessing
 import psutil
+import time
 
 
 class ParamSpace:
@@ -117,12 +118,17 @@ class ExperimentScheduler:
     def add_experiment_param(self, p_name, p_val, **kwargs):
         self.ps.add_param(p_name, p_val, **kwargs)
 
-    def run(self):
+    def run(self, time_delay=0):
         for i_gen in range(self.n_generations):
             pool = multiprocessing.Pool(min([psutil.cpu_count(logical=False), 16]))  # use only physical cpus
-            output = [
-                pool.apply_async(f_proc, args=(self.ps.sample(), i_gen, i_exp, self.exp_obj))
-                for i_exp in range(self.n_experiments)]
+
+            output = []
+            for i_exp in range(self.n_experiments):
+                output.append(pool.apply_async(f_proc, args=(self.ps.sample(), i_gen, i_exp, self.exp_obj)))
+                time.sleep(time_delay)
+            # output = [
+            #     pool.apply_async(f_proc, args=(self.ps.sample(), i_gen, i_exp, self.exp_obj))
+            #     for i_exp in range(self.n_experiments)]
 
             for i, p in enumerate(output):
                 res, sample = p.get()
@@ -160,4 +166,4 @@ if __name__ == "__main__":
     e_sched.add_experiment_param("momentum", partial(np.random.normal, 0, 1), variation_ratio=1)
     e_sched.add_experiment_param("batch_size", [32, 64, 128, 256, 526], variation_ratio=0.5, parameter_type=int)
 
-    e_sched.run()
+    e_sched.run(time_delay=2)
