@@ -126,9 +126,6 @@ class ExperimentScheduler:
             for i_exp in range(self.n_experiments):
                 output.append(pool.apply_async(f_proc, args=(self.ps.sample(), i_gen, i_exp, self.exp_obj)))
                 time.sleep(time_delay)
-            # output = [
-            #     pool.apply_async(f_proc, args=(self.ps.sample(), i_gen, i_exp, self.exp_obj))
-            #     for i_exp in range(self.n_experiments)]
 
             for i, p in enumerate(output):
                 res, sample = p.get()
