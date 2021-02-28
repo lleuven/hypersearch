@@ -9,6 +9,7 @@ from collections import defaultdict
 import multiprocessing
 import psutil
 import time
+import os
 
 
 class ParamSpace:
@@ -74,15 +75,33 @@ class ParamSpace:
 
 class ParamEvaluator:
 
-    def __init__(self):
+    def __init__(self, logfile=None):
         self.logs = defaultdict(list)
+        self._log_file = logfile
+        if self._log_file is not None:
+            assert os.path.exists(self._log_file) is False
+        self._kwargs_order = []
+        self._separator = ";"
 
-    def log_result(self, setting, res):
+    def log_result(self, setting, res, **kwargs):
         for p_name in setting.keys():
             self._log_result_param(p_name, setting[p_name], res)
+            self._log_result_file(p_name, setting[p_name], res, **kwargs)
 
     def _log_result_param(self, p_name, param, res):
         self.logs[p_name].append((param, res))
+
+    def _log_result_file(self, p_name, param, res, **kwargs):
+        if self._log_file is not None:
+            if not os.path.exists(self._log_file):
+                with open(self._log_file, "w") as f:
+                    self._kwargs_order = list(kwargs.keys())
+                    out = self._separator.join(["p_name", "param", "res", *self._kwargs_order])
+                    f.write(f"{out}\n")
+            with open(self._log_file, "a") as f:
+                out = ";".join(map(str, [p_name, param, res, *[str(kwargs[k]) for k in self._kwargs_order]]))
+                f.write(f"{out}\n")
+
 
     def find_top_k(self, k, maximize=True):
         top_k = {}
@@ -106,10 +125,10 @@ class ParamEvaluator:
 class ExperimentScheduler:
 
     def __init__(self, experiment_object, number_of_generations=1, number_of_experiments=1, number_of_variation=0,
-                 maximize=False, max_number_of_top=None):
+                 maximize=False, max_number_of_top=None, logfile=None):
         self.exp_obj = experiment_object
         self.ps = ParamSpace(number_of_combinations=number_of_variation)
-        self.peval = ParamEvaluator()
+        self.peval = ParamEvaluator(logfile=logfile)
         self.n_generations = number_of_generations
         self.n_experiments = number_of_experiments
         self._maximize = maximize
@@ -118,7 +137,7 @@ class ExperimentScheduler:
     def add_experiment_param(self, p_name, p_val, **kwargs):
         self.ps.add_param(p_name, p_val, **kwargs)
 
-    def run(self, time_delay=0):
+    def run(self, time_delay=0.):
         for i_gen in range(self.n_generations):
             pool = multiprocessing.Pool(min([psutil.cpu_count(logical=False), 16]))  # use only physical cpus
 
@@ -130,7 +149,7 @@ class ExperimentScheduler:
             for i, p in enumerate(output):
                 res, sample = p.get()
                 if res is not None:
-                    self.peval.log_result(sample, res)
+                    self.peval.log_result(sample, res, **{"generation": i_gen, "experiment": i})
 
             # for i_exp in range(self.n_experiments):
             #     sample = self.ps.sample()
@@ -158,9 +177,9 @@ if __name__ == "__main__":
         return learning_rate + abs(momentum * batch_size)
 
     e_sched = ExperimentScheduler(test_obj, number_of_generations=20, number_of_experiments=30, number_of_variation=2,
-                                  maximize=False, max_number_of_top=10)
+                                  maximize=False, max_number_of_top=10, logfile="log.csv")
     e_sched.add_experiment_param("learning_rate", [0.1, 0.2, 0.001])
     e_sched.add_experiment_param("momentum", partial(np.random.normal, 0, 1), variation_ratio=1)
     e_sched.add_experiment_param("batch_size", [32, 64, 128, 256, 526], variation_ratio=0.5, parameter_type=int)
 
-    e_sched.run(time_delay=2)
+    e_sched.run(time_delay=0.1)
