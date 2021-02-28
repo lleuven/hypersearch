@@ -102,7 +102,6 @@ class ParamEvaluator:
                 out = ";".join(map(str, [p_name, param, res, *[str(kwargs[k]) for k in self._kwargs_order]]))
                 f.write(f"{out}\n")
 
-
     def find_top_k(self, k, maximize=True):
         top_k = {}
         for p_name in self.logs.keys():
