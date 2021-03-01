@@ -8,6 +8,7 @@ from operator import itemgetter
 from collections import defaultdict
 import multiprocessing
 import psutil
+import copy
 import time
 import os
 import pandas as pd
@@ -18,13 +19,13 @@ class ParamSpace:
 
     def __init__(self, number_of_combinations=5):
         self.params = {}
-        self._param_variation = {}
-        self._param_type = {}
+        self.params_original = {}
+        self._param_opts = {"_param_variation": {}, "_param_type": {}, "_sample_from_original": {}}
         self._number_of_combinations = max(number_of_combinations, 1)
         self._sample_history = []
         self._max_sample_try = 10
 
-    def add_param(self, p_name, p_values, variation_ratio=0., parameter_type=None):
+    def add_param(self, p_name, p_values, variation_ratio=0., parameter_type=None, sample_from_original=0.):
         if p_name in self.params.keys():
             raise KeyError(f"given key '{p_name}' is already registered in the parameter space.")
         if isinstance(p_values, Callable):
@@ -32,14 +33,20 @@ class ParamSpace:
         else:
             self.params[p_name] = to_list(p_values)
         if variation_ratio > 0:
-            self._param_variation[p_name] = variation_ratio
+            self._param_opts["_param_variation"][p_name] = variation_ratio
+            # self._param_variation[p_name] = variation_ratio
         if parameter_type is not None:
-            self._param_type[p_name] = parameter_type
+            self._param_opts["_param_type"][p_name] = parameter_type
+        self._param_opts["_sample_from_original"][p_name] = sample_from_original
+        self.params_original[p_name] = copy.deepcopy(self.params[p_name])
 
     def sample(self, iteration=0):
         p_selected = {}
         for p_name in self.params.keys():
-            p = self.params[p_name]
+            if np.random.random() < self._param_opts["_sample_from_original"].get(p_name, 0):
+                p = self.params_original[p_name]
+            else:
+                p = self.params[p_name]
             if isinstance(p, Callable):
                 sel = p()
             else:
@@ -59,8 +66,9 @@ class ParamSpace:
         self._sample_history = []
 
     def _update_param(self, p_name, values):
-        variation_ratio = self._param_variation.get(p_name, None)
-        param_type = self._param_type.get(p_name, None)
+        # variation_ratio = self._param_variation.get(p_name, None)
+        variation_ratio = self._param_opts["_param_variation"].get(p_name, None)
+        param_type = self._param_opts["_param_type"].get(p_name, None)
         if variation_ratio is None:
             self.params[p_name] = values
         else:
@@ -206,10 +214,10 @@ if __name__ == "__main__":
     def test_obj(learning_rate=0, momentum=1, batch_size=12):
         return learning_rate + abs(momentum * batch_size)
 
-    e_sched = ExperimentScheduler(test_obj, number_of_generations=20, number_of_experiments=30, number_of_variation=5,
+    e_sched = ExperimentScheduler(test_obj, number_of_generations=20, number_of_experiments=100, number_of_variation=5,
                                   maximize=False, max_number_of_top=10, logfile="../log.csv", plot_path="..")
-    e_sched.add_experiment_param("learning_rate", [0.1, 0.2, 0.001])
-    e_sched.add_experiment_param("momentum", partial(np.random.normal, 0, 1), variation_ratio=1)
-    e_sched.add_experiment_param("batch_size", [32, 64, 128, 256, 526], variation_ratio=0.5, parameter_type=int)
+    e_sched.add_experiment_param("learning_rate", [0.1, 0.2, 0.001], sample_from_original=0.01)
+    e_sched.add_experiment_param("momentum", partial(np.random.normal, 0, 1), variation_ratio=1, sample_from_original=0.01)
+    e_sched.add_experiment_param("batch_size", [32, 64, 128, 256, 526], variation_ratio=0.5, parameter_type=int, sample_from_original=0.01)
 
     e_sched.run(time_delay=0.)
