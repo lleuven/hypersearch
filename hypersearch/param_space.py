@@ -10,6 +10,8 @@ import multiprocessing
 import psutil
 import time
 import os
+import pandas as pd
+import matplotlib.pyplot as plt
 
 
 class ParamSpace:
@@ -77,9 +79,9 @@ class ParamEvaluator:
 
     def __init__(self, logfile=None):
         self.logs = defaultdict(list)
-        self._log_file = logfile
-        if self._log_file is not None:
-            assert os.path.exists(self._log_file) is False
+        self.log_file = logfile
+        if self.log_file is not None:
+            assert os.path.exists(self.log_file) is False
         self._kwargs_order = []
         self._separator = ";"
 
@@ -92,13 +94,13 @@ class ParamEvaluator:
         self.logs[p_name].append((param, res))
 
     def _log_result_file(self, p_name, param, res, **kwargs):
-        if self._log_file is not None:
-            if not os.path.exists(self._log_file):
-                with open(self._log_file, "w") as f:
+        if self.log_file is not None:
+            if not os.path.exists(self.log_file):
+                with open(self.log_file, "w") as f:
                     self._kwargs_order = list(kwargs.keys())
                     out = self._separator.join(["p_name", "param", "res", *self._kwargs_order])
                     f.write(f"{out}\n")
-            with open(self._log_file, "a") as f:
+            with open(self.log_file, "a") as f:
                 out = ";".join(map(str, [p_name, param, res, *[str(kwargs[k]) for k in self._kwargs_order]]))
                 f.write(f"{out}\n")
 
@@ -124,7 +126,7 @@ class ParamEvaluator:
 class ExperimentScheduler:
 
     def __init__(self, experiment_object, number_of_generations=1, number_of_experiments=1, number_of_variation=0,
-                 maximize=False, max_number_of_top=None, logfile=None):
+                 maximize=False, max_number_of_top=None, logfile=None, plot_path=None):
         self.exp_obj = experiment_object
         self.ps = ParamSpace(number_of_combinations=number_of_variation)
         self.peval = ParamEvaluator(logfile=logfile)
@@ -132,9 +134,12 @@ class ExperimentScheduler:
         self.n_experiments = number_of_experiments
         self._maximize = maximize
         self._max_k = max_number_of_top or self.n_generations
+        self._plot_path = plot_path if self.peval.log_file is not None else None
+        self._experiment_param = []
 
     def add_experiment_param(self, p_name, p_val, **kwargs):
         self.ps.add_param(p_name, p_val, **kwargs)
+        self._experiment_param.append(p_name)
 
     def run(self, time_delay=0.):
         for i_gen in range(self.n_generations):
@@ -162,6 +167,31 @@ class ExperimentScheduler:
             print("############")
             self.ps.update_param_space(top_k)
             self.peval.reset()
+        self.plot()
+
+    def read_log_file(self):
+        return pd.read_csv(self.peval.log_file, sep=self.peval._separator)
+
+    def plot(self):
+        if self._plot_path is None:
+            return
+        data = self.read_log_file()
+        for p_name in self._experiment_param:
+            plot_data = data.loc[data.loc[:, "p_name"] == p_name].groupby("generation")
+            ax = None
+            cmap = plt.get_cmap('rainbow', plot_data.ngroups)
+            colors = [cmap(x) for x in np.linspace(0, 1, plot_data.ngroups)]
+            for i, (name, group) in enumerate(plot_data):
+                if ax is None:
+                    ax = group.plot(x="param", y="res", kind="scatter", logy=True, label=name, color=colors[i])
+                else:
+                    group.plot(x="param", y="res", kind="scatter", logy=True, ax=ax, label=name, color=colors[i])
+            ax.set_xlabel(p_name)
+            ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+            plt.tight_layout()
+            plt.savefig(os.path.join(self._plot_path, f"{p_name}.png"), dpi=300)
+            plt.close()
+
 
 def f_proc(sample, i_gen, i_exp, exp_obj):
     res = None
@@ -170,15 +200,16 @@ def f_proc(sample, i_gen, i_exp, exp_obj):
         res = exp_obj(**sample)
     return res, sample
 
+
 if __name__ == "__main__":
 
     def test_obj(learning_rate=0, momentum=1, batch_size=12):
         return learning_rate + abs(momentum * batch_size)
 
-    e_sched = ExperimentScheduler(test_obj, number_of_generations=20, number_of_experiments=30, number_of_variation=2,
-                                  maximize=False, max_number_of_top=10, logfile="log.csv")
+    e_sched = ExperimentScheduler(test_obj, number_of_generations=20, number_of_experiments=30, number_of_variation=5,
+                                  maximize=False, max_number_of_top=10, logfile="../log.csv", plot_path="..")
     e_sched.add_experiment_param("learning_rate", [0.1, 0.2, 0.001])
     e_sched.add_experiment_param("momentum", partial(np.random.normal, 0, 1), variation_ratio=1)
     e_sched.add_experiment_param("batch_size", [32, 64, 128, 256, 526], variation_ratio=0.5, parameter_type=int)
 
-    e_sched.run(time_delay=0.1)
+    e_sched.run(time_delay=0.)
