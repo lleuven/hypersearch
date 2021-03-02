@@ -13,6 +13,7 @@ import time
 import os
 import pandas as pd
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 
 class ParamSpace:
@@ -43,7 +44,7 @@ class ParamSpace:
     def sample(self, iteration=0):
         p_selected = {}
         for p_name in self.params.keys():
-            if np.random.random() < self._param_opts["_sample_from_original"].get(p_name, 0):
+            if np.random.random() < self._param_opts["_sample_from_original"].get(p_name, 0) and iteration < 1:
                 p = self.params_original[p_name]
             else:
                 p = self.params[p_name]
@@ -185,20 +186,15 @@ class ExperimentScheduler:
             return
         data = self.read_log_file()
         for p_name in self._experiment_param:
-            plot_data = data.loc[data.loc[:, "p_name"] == p_name].groupby("generation")
-            ax = None
-            cmap = plt.get_cmap('rainbow', plot_data.ngroups)
-            colors = [cmap(x) for x in np.linspace(0, 1, plot_data.ngroups)]
-            for i, (name, group) in enumerate(plot_data):
-                if ax is None:
-                    ax = group.plot(x="param", y="res", kind="scatter", logy=True, label=name, color=colors[i])
-                else:
-                    group.plot(x="param", y="res", kind="scatter", logy=True, ax=ax, label=name, color=colors[i])
+            plot_data = data.loc[data.loc[:, "p_name"] == p_name].astype(
+                {"param": float, "res": float, "generation": "category"}, errors="ignore")
+            ax = sns.scatterplot(x="param", y="res", data=plot_data, hue="generation", palette="rainbow")
             ax.set_xlabel(p_name)
+            ax.set_yscale('log')
             ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
             plt.tight_layout()
             plt.savefig(os.path.join(self._plot_path, f"{p_name}.png"), dpi=300)
-            plt.close()
+            plt.close('all')
 
 
 def f_proc(sample, i_gen, i_exp, exp_obj):
@@ -211,13 +207,14 @@ def f_proc(sample, i_gen, i_exp, exp_obj):
 
 if __name__ == "__main__":
 
-    def test_obj(learning_rate=0, momentum=1, batch_size=12):
+    def test_obj(learning_rate=0, momentum=1, batch_size=12, **kwargs):
         return learning_rate + abs(momentum * batch_size)
 
     e_sched = ExperimentScheduler(test_obj, number_of_generations=20, number_of_experiments=100, number_of_variation=5,
                                   maximize=False, max_number_of_top=10, logfile="../log.csv", plot_path="..")
-    e_sched.add_experiment_param("learning_rate", [0.1, 0.2, 0.001], sample_from_original=0.01)
-    e_sched.add_experiment_param("momentum", partial(np.random.normal, 0, 1), variation_ratio=1, sample_from_original=0.01)
+    e_sched.add_experiment_param("learning_rate", [0.1, 0.2, 0.001], sample_from_original=0.1)
+    e_sched.add_experiment_param("momentum", partial(np.random.normal, 0, 1), variation_ratio=0.5, sample_from_original=0.01)
     e_sched.add_experiment_param("batch_size", [32, 64, 128, 256, 526], variation_ratio=0.5, parameter_type=int, sample_from_original=0.01)
+    e_sched.add_experiment_param("activation", ["tanh", "sigmoid"], parameter_type=str)
 
     e_sched.run(time_delay=0.)
