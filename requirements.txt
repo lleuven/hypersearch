@@ -1,5 +1,5 @@
-numpy
-psutil
-pandas
-matplotlib
+numpy==1.19.5
+psutil==5.8.0
+pandas==1.1.5
+matplotlib==3.3.4
 seaborn==0.11.1
