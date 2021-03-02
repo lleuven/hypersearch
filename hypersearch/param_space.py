@@ -163,12 +163,7 @@ class ExperimentScheduler:
                 res, sample = p.get()
                 if res is not None:
                     self.peval.log_result(sample, res, **{"generation": i_gen, "experiment": i})
-
-            # for i_exp in range(self.n_experiments):
-            #     sample = self.ps.sample()
-            #     print(f"({i_gen}:{i_exp}", sample)
-            #     res = self.exp_obj(**sample)
-            #     self.peval.log_result(sample, res)
+            self.plot()
 
             k = min(self.n_generations - i_gen, self._max_k)
             top_k = self.peval.find_top_k(k, maximize=self._maximize)
