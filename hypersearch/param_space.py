@@ -192,6 +192,21 @@ class ExperimentScheduler:
             plt.close('all')
 
 
+def plot_from_log_file(plot_path, log_file, separator=";"):
+    data = pd.read_csv(log_file, sep=separator)
+    p_name_list = data.groupby("p_name").groups
+    for p_name in p_name_list:
+        plot_data = data.loc[data.loc[:, "p_name"] == p_name].astype(
+            {"param": float, "res": float, "generation": "category"}, errors="ignore")
+        ax = sns.scatterplot(x="param", y="res", data=plot_data, hue="generation", palette="rainbow")
+        ax.set_xlabel(p_name)
+        ax.set_yscale('log')
+        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+        plt.tight_layout()
+        plt.savefig(os.path.join(plot_path, f"{p_name}.png"), dpi=300)
+        plt.close('all')
+
+
 def f_proc(sample, i_gen, i_exp, exp_obj):
     res = None
     if sample is not None:
