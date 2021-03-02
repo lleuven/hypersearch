@@ -228,3 +228,5 @@ if __name__ == "__main__":
     e_sched.add_experiment_param("activation", ["tanh", "sigmoid"], parameter_type=str)
 
     e_sched.run(time_delay=0.)
+
+    # plot_from_log_file("..", "../log.csv")
