@@ -114,19 +114,21 @@ class ParamEvaluator:
                 f.write(f"{out}\n")
 
     def find_top_k(self, k, maximize=True):
-        top_k = {}
+        top_k, top_k_res = {}, None
         for p_name in self.logs.keys():
-            top_k_p = self._find_top_k_param(p_name, k, maximize=maximize)
+            top_k_p, top_k_res = self._find_top_k_param(p_name, k, maximize=maximize)
             top_k[p_name] = top_k_p
-        return top_k
+        return top_k, top_k_res
 
     def _find_top_k_param(self, p_name, k, maximize=True):
         p_logs = self.logs[p_name]
         k = min([k, len(p_logs)])
         p_logs.sort(key=itemgetter(1), reverse=maximize)
-        top_k = list(map(itemgetter(0), p_logs))[:k]
-        top_k = list(set(top_k))
-        return top_k
+        top_k_param = list(map(itemgetter(0), p_logs))[:k]
+        top_k_param = list(set(top_k_param))
+        top_k_res = list(map(itemgetter(1), p_logs))[:k]
+        top_k_res = list(set(top_k_res))
+        return top_k_param, top_k_res
 
     def reset(self):
         self.logs = defaultdict(list)
@@ -166,8 +168,9 @@ class ExperimentScheduler:
             self.plot()
 
             k = min(self.n_generations - i_gen, self._max_k)
-            top_k = self.peval.find_top_k(k, maximize=self._maximize)
-            print(top_k)
+            top_k, top_k_res = self.peval.find_top_k(k, maximize=self._maximize)
+            print(f"top {k} parameters: ", top_k)
+            print(f"top {k} results: ", top_k_res)
             print("############")
             self.ps.update_param_space(top_k)
             self.peval.reset()
