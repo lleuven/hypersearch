@@ -7,6 +7,7 @@ from functools import partial
 from operator import itemgetter
 from collections import defaultdict
 import multiprocessing
+import threading
 import psutil
 import copy
 import time
@@ -154,12 +155,11 @@ class ExperimentScheduler:
 
     def run(self, time_delay=0.):
         for i_gen in range(self.n_generations):
-            pool = multiprocessing.Pool(min([psutil.cpu_count(logical=False), 16]))  # use only physical cpus
-
+            pool = multiprocessing.Pool(min([psutil.cpu_count(logical=False), 16]),
+                                        initializer=init, initargs=[multiprocessing.Lock()])  # use only physical cpus
             output = []
             for i_exp in range(self.n_experiments):
-                output.append(pool.apply_async(f_proc, args=(self.ps.sample(), i_gen, i_exp, self.exp_obj)))
-                time.sleep(time_delay)
+                output.append(pool.apply_async(f_proc, args=(self.ps.sample(), i_gen, i_exp, self.exp_obj), kwds={"sleep": time_delay}))
 
             for i, p in enumerate(output):
                 res, sample = p.get()
@@ -210,7 +210,14 @@ def plot_from_log_file(plot_path, log_file, separator=";"):
         plt.close('all')
 
 
-def f_proc(sample, i_gen, i_exp, exp_obj):
+def init(lock):
+    global starting
+    starting = lock
+
+
+def f_proc(sample, i_gen, i_exp, exp_obj, sleep=0):
+    starting.acquire()  # no other process can get it until it is released
+    threading.Timer(sleep, starting.release).start()
     res = None
     if sample is not None:
         print(f"({i_gen}:{i_exp}", sample)
