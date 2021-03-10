@@ -52,7 +52,7 @@ class ParamSpace:
             if isinstance(p, Callable):
                 sel = p()
             else:
-                sel = np.random.choice(p)
+                sel = p[np.random.randint(0, len(p))]
             p_selected[p_name] = sel
         if p_selected in self._sample_history:
             if iteration == self._max_sample_try:
@@ -126,10 +126,11 @@ class ParamEvaluator:
         k = min([k, len(p_logs)])
         p_logs.sort(key=itemgetter(1), reverse=maximize)
         top_k_param = list(map(itemgetter(0), p_logs))[:k]
-        top_k_param = list(set(top_k_param))
+        unique_top_k_param = []
+        [unique_top_k_param.append(e) for e in top_k_param if e not in unique_top_k_param]
         top_k_res = list(map(itemgetter(1), p_logs))[:k]
         top_k_res = list(set(top_k_res))
-        return top_k_param, top_k_res
+        return unique_top_k_param, top_k_res
 
     def reset(self):
         self.logs = defaultdict(list)
@@ -236,7 +237,7 @@ if __name__ == "__main__":
     e_sched.add_experiment_param("momentum", partial(np.random.normal, 0, 1), variation_ratio=0.5, sample_from_original=0.01)
     e_sched.add_experiment_param("batch_size", [32, 64, 128, 256, 526], variation_ratio=0.5, parameter_type=int, sample_from_original=0.01)
     e_sched.add_experiment_param("activation", ["tanh", "sigmoid"], parameter_type=str)
-
+    e_sched.add_experiment_param("explicite_layers", [[64, 32], [128, 4, 4], [1, 1, 1]], parameter_type=list)
     e_sched.run(time_delay=0.)
 
     # plot_from_log_file("..", "../log.csv")
