@@ -13,6 +13,8 @@ import copy
 import time
 import os
 import pandas as pd
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -62,10 +64,11 @@ class ParamSpace:
             self._sample_history.append(p_selected)
             return p_selected
 
-    def update_param_space(self, update_opts):
+    def update_param_space(self, update_opts, clear_history=True):
         for p_name, p_vals in update_opts.items():
             self._update_param(p_name, p_vals)
-        self._sample_history = []
+        if clear_history is True:
+            self._sample_history = []
 
     def _update_param(self, p_name, values):
         # variation_ratio = self._param_variation.get(p_name, None)
@@ -173,8 +176,8 @@ class ExperimentScheduler:
             print(f"top {k} parameters: ", top_k)
             print(f"top {k} results: ", top_k_res)
             print("############")
-            self.ps.update_param_space(top_k)
-            self.peval.reset()
+            self.ps.update_param_space(top_k, clear_history=False)
+            # self.peval.reset()
         self.plot()
 
     def read_log_file(self):
@@ -231,7 +234,7 @@ if __name__ == "__main__":
     def test_obj(learning_rate=0, momentum=1, batch_size=12, **kwargs):
         return learning_rate + abs(momentum * batch_size)
 
-    e_sched = ExperimentScheduler(test_obj, number_of_generations=20, number_of_experiments=100, number_of_variation=5,
+    e_sched = ExperimentScheduler(test_obj, number_of_generations=10, number_of_experiments=100, number_of_variation=5,
                                   maximize=False, max_number_of_top=10, logfile="../log.csv", plot_path="..")
     e_sched.add_experiment_param("learning_rate", [0.1, 0.2, 0.001], sample_from_original=0.1)
     e_sched.add_experiment_param("momentum", partial(np.random.normal, 0, 1), variation_ratio=0.5, sample_from_original=0.01)
