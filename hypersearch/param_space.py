@@ -142,12 +142,13 @@ class ParamEvaluator:
 class ExperimentScheduler:
 
     def __init__(self, experiment_object, number_of_generations=1, number_of_experiments=1, number_of_variation=0,
-                 maximize=False, max_number_of_top=None, logfile=None, plot_path=None):
+                 maximize=False, max_number_of_top=None, logfile=None, plot_path=None, number_of_experiments_decay=0.):
         self.exp_obj = experiment_object
         self.ps = ParamSpace(number_of_combinations=number_of_variation)
         self.peval = ParamEvaluator(logfile=logfile)
         self.n_generations = number_of_generations
         self.n_experiments = number_of_experiments
+        self.decay = min(max(number_of_experiments_decay, 0), 0.99)
         self._maximize = maximize
         self._max_k = max_number_of_top or self.n_generations
         self._plot_path = plot_path if self.peval.log_file is not None else None
@@ -158,11 +159,12 @@ class ExperimentScheduler:
         self._experiment_param.append(p_name)
 
     def run(self, time_delay=0.):
+        n_experiments = self.n_experiments
         for i_gen in range(self.n_generations):
             pool = multiprocessing.Pool(min([psutil.cpu_count(logical=False), 16]),
                                         initializer=init, initargs=[multiprocessing.Lock()])  # use only physical cpus
             output = []
-            for i_exp in range(self.n_experiments):
+            for i_exp in range(n_experiments):
                 output.append(pool.apply_async(f_proc, args=(self.ps.sample(), i_gen, i_exp, self.exp_obj), kwds={"sleep": time_delay}))
 
             for i, p in enumerate(output):
@@ -177,6 +179,7 @@ class ExperimentScheduler:
             print(f"top {k} results: ", top_k_res)
             print("############")
             self.ps.update_param_space(top_k, clear_history=False)
+            n_experiments = max(int(n_experiments * (1 - self.decay)), 2*k)
             # self.peval.reset()
         self.plot()
 
@@ -235,7 +238,8 @@ if __name__ == "__main__":
         return learning_rate + abs(momentum * batch_size)
 
     e_sched = ExperimentScheduler(test_obj, number_of_generations=10, number_of_experiments=100, number_of_variation=5,
-                                  maximize=False, max_number_of_top=10, logfile="../log.csv", plot_path="..")
+                                  maximize=False, max_number_of_top=10, logfile="../log.csv", plot_path="..",
+                                  number_of_experiments_decay=0.3)
     e_sched.add_experiment_param("learning_rate", [0.1, 0.2, 0.001], sample_from_original=0.1)
     e_sched.add_experiment_param("momentum", partial(np.random.normal, 0, 1), variation_ratio=0.5, sample_from_original=0.01)
     e_sched.add_experiment_param("batch_size", [32, 64, 128, 256, 526], variation_ratio=0.5, parameter_type=int, sample_from_original=0.01)
