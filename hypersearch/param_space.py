@@ -80,6 +80,8 @@ class ParamSpace:
                     self.params[p_name] = [json.loads(str(val)) for val in values]
                 except json.decoder.JSONDecodeError:
                     self.params[p_name] = [val.strip("][").split(",") for val in values]
+            elif param_type == bool:
+                self.params[p_name] = [str(val).lower() == "true" for val in values]
             else:
                 self.params[p_name] = [val if param_type is None else param_type(val) for val in values]
         else:
@@ -277,12 +279,13 @@ if __name__ == "__main__":
 
     e_sched = ExperimentScheduler(test_obj, number_of_generations=10, number_of_experiments=100, number_of_variation=5,
                                   maximize=False, max_number_of_top=10, logfile="../log.csv", plot_path="..",
-                                  number_of_experiments_decay=0.3, start_generation=2)
+                                  number_of_experiments_decay=0.3, start_generation=1)
     e_sched.add_experiment_param("learning_rate", [0.1, 0.2, 0.001], sample_from_original=0.1)
     e_sched.add_experiment_param("momentum", partial(np.random.normal, 0, 1), variation_ratio=0.5, sample_from_original=0.01)
     e_sched.add_experiment_param("batch_size", [32, 64, 128, 256, 526], variation_ratio=0.5, parameter_type=int, sample_from_original=0.01)
     e_sched.add_experiment_param("activation", ["tanh", "sigmoid"], parameter_type=str)
     e_sched.add_experiment_param("explicite_layers", [[64, 32], [128, 4, 4], [1, 1, 1]], parameter_type=list)
+    e_sched.add_experiment_param("bool_param", [True, False], parameter_type=bool)
     e_sched.run(time_delay=0.)
 
     # plot_from_log_file("..", "../log.csv")
