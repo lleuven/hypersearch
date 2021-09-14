@@ -196,7 +196,7 @@ class ExperimentScheduler:
         print(f"top {k} results: ", top_k_res)
         print("############")
         self.ps.update_param_space(top_k, clear_history=False)
-        n_iterations = i_gen if self.start_generation == i_gen else 1
+        n_iterations = i_gen if self.start_generation == i_gen and i_gen > 0 else 1
         n_experiments = self._adjust_n_experiments(n_experiments, iterations=n_iterations)
         return n_experiments
 
@@ -279,7 +279,7 @@ if __name__ == "__main__":
 
     e_sched = ExperimentScheduler(test_obj, number_of_generations=10, number_of_experiments=100, number_of_variation=5,
                                   maximize=False, max_number_of_top=10, logfile="../log.csv", plot_path="..",
-                                  number_of_experiments_decay=0.3, start_generation=1)
+                                  number_of_experiments_decay=0.3, start_generation=0)
     e_sched.add_experiment_param("learning_rate", [0.1, 0.2, 0.001], sample_from_original=0.1)
     e_sched.add_experiment_param("momentum", partial(np.random.normal, 0, 1), variation_ratio=0.5, sample_from_original=0.01)
     e_sched.add_experiment_param("batch_size", [32, 64, 128, 256, 526], variation_ratio=0.5, parameter_type=int, sample_from_original=0.01)
