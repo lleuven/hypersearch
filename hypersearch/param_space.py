@@ -142,7 +142,8 @@ class ParamEvaluator:
 class ExperimentScheduler:
 
     def __init__(self, experiment_object, number_of_generations=1, number_of_experiments=1, number_of_variation=0,
-                 maximize=False, max_number_of_top=None, logfile=None, plot_path=None, number_of_experiments_decay=0.):
+                 maximize=False, max_number_of_top=None, logfile=None, plot_path=None, number_of_experiments_decay=0.,
+                 number_of_jobs=16):
         self.exp_obj = experiment_object
         self.ps = ParamSpace(number_of_combinations=number_of_variation)
         self.peval = ParamEvaluator(logfile=logfile)
@@ -151,6 +152,7 @@ class ExperimentScheduler:
         self.decay = min(max(number_of_experiments_decay, 0), 0.99)
         self._maximize = maximize
         self._max_k = max_number_of_top or self.n_generations
+        self.n_jobs = number_of_jobs
         self._plot_path = plot_path if self.peval.log_file is not None else None
         self._experiment_param = []
 
@@ -161,7 +163,7 @@ class ExperimentScheduler:
     def run(self, time_delay=0.):
         n_experiments = self.n_experiments
         for i_gen in range(self.n_generations):
-            pool = multiprocessing.Pool(min([psutil.cpu_count(logical=False), 16]),
+            pool = multiprocessing.Pool(min([psutil.cpu_count(logical=False), self.n_jobs]),
                                         initializer=init, initargs=[multiprocessing.Lock()])  # use only physical cpus
             output = []
             for i_exp in range(n_experiments):
