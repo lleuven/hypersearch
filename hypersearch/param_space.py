@@ -1,5 +1,4 @@
 
-
 import numpy as np
 from hypersearch.helpers import to_list
 from typing import Callable
@@ -11,6 +10,7 @@ import threading
 import psutil
 import copy
 import time
+import json
 import os
 import pandas as pd
 import matplotlib
@@ -29,7 +29,7 @@ class ParamSpace:
         self._sample_history = []
         self._max_sample_try = 10
 
-    def add_param(self, p_name, p_values, variation_ratio=0., parameter_type=None, sample_from_original=0.):
+    def add_param(self, p_name, p_values, variation_ratio=0., parameter_type=float, sample_from_original=0.):
         if p_name in self.params.keys():
             raise KeyError(f"given key '{p_name}' is already registered in the parameter space.")
         if isinstance(p_values, Callable):
@@ -75,10 +75,19 @@ class ParamSpace:
         variation_ratio = self._param_opts["_param_variation"].get(p_name, None)
         param_type = self._param_opts["_param_type"].get(p_name, None)
         if variation_ratio is None:
-            self.params[p_name] = values
+            if param_type == list:
+                try:
+                    self.params[p_name] = [json.loads(str(val)) for val in values]
+                except json.decoder.JSONDecodeError:
+                    self.params[p_name] = [val.strip("][").split(",") for val in values]
+            elif param_type == bool:
+                self.params[p_name] = [str(val).lower() == "true" for val in values]
+            else:
+                self.params[p_name] = [val if param_type is None else param_type(val) for val in values]
         else:
             new_param_values = []
             for val in values:
+                val = val if param_type is None else param_type(val)
                 new_param_values.append(val)
                 for rand_num in range(self._number_of_combinations - 1):
                     variation = val * (2 * variation_ratio * np.random.random() - variation_ratio)
@@ -90,10 +99,10 @@ class ParamSpace:
 
 class ParamEvaluator:
 
-    def __init__(self, logfile=None):
+    def __init__(self, logfile=None, append_mode=False):
         self.logs = defaultdict(list)
         self.log_file = logfile
-        if self.log_file is not None:
+        if self.log_file is not None and append_mode is False:
             assert os.path.exists(self.log_file) is False
         self._kwargs_order = []
         self._separator = ";"
@@ -104,7 +113,14 @@ class ParamEvaluator:
             self._log_result_file(p_name, setting[p_name], res, **kwargs)
 
     def _log_result_param(self, p_name, param, res):
-        self.logs[p_name].append((param, res))
+        self.logs[p_name].append((param, float(res)))
+
+    def load_log_from_file(self):
+        if self.log_file is not None:
+            with open(self.log_file, "r") as f:
+                for line in f.readlines()[1:]:
+                    log = line.strip().split(sep=self._separator)[:3]
+                    self._log_result_param(*log)
 
     def _log_result_file(self, p_name, param, res, **kwargs):
         if self.log_file is not None:
@@ -113,6 +129,14 @@ class ParamEvaluator:
                     self._kwargs_order = list(kwargs.keys())
                     out = self._separator.join(["p_name", "param", "res", *self._kwargs_order])
                     f.write(f"{out}\n")
+            else:
+                if len(self._kwargs_order) != len(kwargs):
+                    with open(self.log_file, "r") as f:
+                        first_line = f.readline().strip()
+                        assert self._separator.join(["p_name", "param", "res", *list(kwargs.keys())]) == first_line
+                        self._kwargs_order = list(kwargs.keys())
+                else:
+                    assert self._kwargs_order == list(kwargs.keys())
             with open(self.log_file, "a") as f:
                 out = ";".join(map(str, [p_name, param, res, *[str(kwargs[k]) for k in self._kwargs_order]]))
                 f.write(f"{out}\n")
@@ -142,12 +166,14 @@ class ParamEvaluator:
 class ExperimentScheduler:
 
     def __init__(self, experiment_object, number_of_generations=1, number_of_experiments=1, number_of_variation=0,
-                 maximize=False, max_number_of_top=None, logfile=None, plot_path=None, number_of_experiments_decay=0.):
+                 maximize=False, max_number_of_top=None, logfile=None, plot_path=None, number_of_experiments_decay=0.,
+                 start_generation=0):
         self.exp_obj = experiment_object
         self.ps = ParamSpace(number_of_combinations=number_of_variation)
-        self.peval = ParamEvaluator(logfile=logfile)
+        self.peval = ParamEvaluator(logfile=logfile, append_mode=(start_generation > 0))
         self.n_generations = number_of_generations
         self.n_experiments = number_of_experiments
+        self.start_generation = start_generation
         self.decay = min(max(number_of_experiments_decay, 0), 0.99)
         self._maximize = maximize
         self._max_k = max_number_of_top or self.n_generations
@@ -158,9 +184,29 @@ class ExperimentScheduler:
         self.ps.add_param(p_name, p_val, **kwargs)
         self._experiment_param.append(p_name)
 
+    def _adjust_n_experiments(self, n_exp, k=1, iterations=0):
+        for i in range(iterations):
+            n_exp = max(int(n_exp * (1 - self.decay)), 2*k)
+        return n_exp
+
+    def prepare_next_generation(self, i_gen, n_experiments):
+        k = min(self.n_generations - i_gen, self._max_k)
+        top_k, top_k_res = self.peval.find_top_k(k, maximize=self._maximize)
+        print(f"top {k} parameters: ", top_k)
+        print(f"top {k} results: ", top_k_res)
+        print("############")
+        self.ps.update_param_space(top_k, clear_history=False)
+        n_iterations = i_gen if self.start_generation == i_gen and i_gen > 0 else 1
+        n_experiments = self._adjust_n_experiments(n_experiments, iterations=n_iterations)
+        return n_experiments
+
     def run(self, time_delay=0.):
-        n_experiments = self.n_experiments
-        for i_gen in range(self.n_generations):
+        if self.start_generation == 0:
+            n_experiments = self.n_experiments
+        else:
+            self.peval.load_log_from_file()
+            n_experiments = self.prepare_next_generation(self.start_generation, self.n_experiments)
+        for i_gen in range(self.start_generation, self.n_generations):
             pool = multiprocessing.Pool(min([psutil.cpu_count(logical=False), 16]),
                                         initializer=init, initargs=[multiprocessing.Lock()])  # use only physical cpus
             output = []
@@ -173,13 +219,7 @@ class ExperimentScheduler:
                     self.peval.log_result(sample, res, **{"generation": i_gen, "experiment": i})
             self.plot()
 
-            k = min(self.n_generations - i_gen, self._max_k)
-            top_k, top_k_res = self.peval.find_top_k(k, maximize=self._maximize)
-            print(f"top {k} parameters: ", top_k)
-            print(f"top {k} results: ", top_k_res)
-            print("############")
-            self.ps.update_param_space(top_k, clear_history=False)
-            n_experiments = max(int(n_experiments * (1 - self.decay)), 2*k)
+            n_experiments = self.prepare_next_generation(i_gen, n_experiments)
             # self.peval.reset()
         self.plot()
 
@@ -239,12 +279,13 @@ if __name__ == "__main__":
 
     e_sched = ExperimentScheduler(test_obj, number_of_generations=10, number_of_experiments=100, number_of_variation=5,
                                   maximize=False, max_number_of_top=10, logfile="../log.csv", plot_path="..",
-                                  number_of_experiments_decay=0.3)
+                                  number_of_experiments_decay=0.3, start_generation=0)
     e_sched.add_experiment_param("learning_rate", [0.1, 0.2, 0.001], sample_from_original=0.1)
     e_sched.add_experiment_param("momentum", partial(np.random.normal, 0, 1), variation_ratio=0.5, sample_from_original=0.01)
     e_sched.add_experiment_param("batch_size", [32, 64, 128, 256, 526], variation_ratio=0.5, parameter_type=int, sample_from_original=0.01)
     e_sched.add_experiment_param("activation", ["tanh", "sigmoid"], parameter_type=str)
     e_sched.add_experiment_param("explicite_layers", [[64, 32], [128, 4, 4], [1, 1, 1]], parameter_type=list)
+    e_sched.add_experiment_param("bool_param", [True, False], parameter_type=bool)
     e_sched.run(time_delay=0.)
 
     # plot_from_log_file("..", "../log.csv")
