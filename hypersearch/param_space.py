@@ -83,17 +83,24 @@ class ParamSpace:
             elif param_type == bool:
                 self.params[p_name] = [str(val).lower() == "true" for val in values]
             else:
-                self.params[p_name] = [val if param_type is None else param_type(val) for val in values]
+                p_type, p_prec = param_type if isinstance(param_type, tuple) else (param_type, None)
+                new_param_values = [val if param_type is None else p_type(val) for val in values]
+                if p_prec is not None and isinstance(p_prec, int):
+                    new_param_values = list(set([round(val, p_prec) for val in new_param_values]))
+                self.params[p_name] = new_param_values
         else:
             new_param_values = []
+            p_type, p_prec = param_type if isinstance(param_type, tuple) else (param_type, None)
             for val in values:
-                val = val if param_type is None else param_type(val)
+                val = val if p_type is None else p_type(val)
                 new_param_values.append(val)
                 for rand_num in range(self._number_of_combinations - 1):
                     variation = val * (2 * variation_ratio * np.random.random() - variation_ratio)
                     new_val = val + variation
-                    new_val = new_val if param_type is None else param_type(new_val)
+                    new_val = new_val if p_type is None else p_type(new_val)
                     new_param_values.append(new_val)
+            if p_prec is not None and isinstance(p_prec, int):
+                new_param_values = [round(val, p_prec) for val in new_param_values]
             self.params[p_name] = list(set(new_param_values))
 
 
@@ -282,12 +289,15 @@ if __name__ == "__main__":
     e_sched = ExperimentScheduler(test_obj, number_of_generations=10, number_of_experiments=100, number_of_variation=5,
                                   maximize=False, max_number_of_top=10, logfile="../log.csv", plot_path="..",
                                   number_of_experiments_decay=0.3, start_generation=0)
-    e_sched.add_experiment_param("learning_rate", [0.1, 0.2, 0.001], sample_from_original=0.1)
+    e_sched.add_experiment_param("learning_rate", [0.1, 0.2, 0.001], sample_from_original=0.1, parameter_type=(float, 3))
     e_sched.add_experiment_param("momentum", partial(np.random.normal, 0, 1), variation_ratio=0.5, sample_from_original=0.01)
     e_sched.add_experiment_param("batch_size", [32, 64, 128, 256, 526], variation_ratio=0.5, parameter_type=int, sample_from_original=0.01)
     e_sched.add_experiment_param("activation", ["tanh", "sigmoid"], parameter_type=str)
     e_sched.add_experiment_param("explicite_layers", [[64, 32], [128, 4, 4], [1, 1, 1]], parameter_type=list)
     e_sched.add_experiment_param("bool_param", [True, False], parameter_type=bool)
+    e_sched.add_experiment_param("decay", [0.1, 0.01, 0.001], parameter_type=(float, 3), variation_ratio=0.5)
+    e_sched.add_experiment_param("dropout", [0.1, 0.001], parameter_type=float, variation_ratio=0.5)
+    e_sched.add_experiment_param("delay", [0.1, 0.01, 0.001], parameter_type=float)
     e_sched.run(time_delay=0.)
 
     # plot_from_log_file("..", "../log.csv")
